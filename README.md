@@ -4,6 +4,10 @@ A free, native macOS Git client modelled on [Tower](https://www.git-tower.com). 
 
 ![Working copy](docs/working-copy.png)
 
+## Install
+
+Download `Gitter-<version>.zip` from the [Releases](https://github.com/romadinov/gitter/releases) page, unzip, and drag `Gitter.app` to `/Applications`. The app is ad-hoc signed, not notarized, so on first launch right-click it and choose **Open** (or run `xattr -d com.apple.quarantine /Applications/Gitter.app`).
+
 ## Build and run
 
 Requirements: macOS 15 or later, Xcode 16+ (Swift 6 toolchain), `git` on the system.

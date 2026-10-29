@@ -334,12 +334,13 @@ final class Repository {
 
     // MARK: - Commit
 
-    func commit(message: String, amend: Bool, sign: Bool) async {
+    func commit(message: String, amend: Bool, sign: Bool, skipHooks: Bool = false) async {
         await perform(amend ? "Amending" : "Committing") { [self] in
             let before = await headHash()
             var args = ["commit", "-F", "-"]
             if amend { args.append("--amend") }
             if sign { args.append("-S") }
+            if skipHooks { args.append("--no-verify") }
             try await run(args, stdin: Data(message.utf8))
             let after = await headHash()
             undoStack.push(UndoableAction(title: amend ? "Amend" : "Commit", undo: { [self] in

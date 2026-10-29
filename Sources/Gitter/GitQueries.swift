@@ -199,11 +199,16 @@ enum GitQueries {
         var firstParent = false
         var topoOrder = false
         var range: String?        // e.g. "main..feature"
+        var since: Date?
+        var until: Date?
+        var author: String = ""
     }
 
     static func log(_ query: LogQuery, in url: URL) async throws -> [Commit] {
         var args = ["log", query.topoOrder ? "--topo-order" : "--date-order", logFormat, "-n", "\(query.limit)"]
         if query.firstParent { args.append("--first-parent") }
+        let dateFilters: [String] = (query.since.map { ["--since=\(Int($0.timeIntervalSince1970))"] } ?? []) + (query.until.map { ["--until=\(Int($0.timeIntervalSince1970))"] } ?? []) + (query.author.isEmpty ? [] : ["--author=\(query.author)", "-i"])
+        args.append(contentsOf: dateFilters)
         if let range = query.range {
             args.append(range)
         } else if let ref = query.ref {
@@ -234,7 +239,7 @@ enum GitQueries {
         var commits = parseLog(result.stdout)
         if !term.isEmpty {
             // Author search (OR'd with the message search above).
-            var authorArgs = ["log", "--date-order", logFormat, "-n", "\(query.limit)", "-i", "--author=\(term)"]
+            var authorArgs = ["log", "--date-order", logFormat, "-n", "\(query.limit)", "-i", "--author=\(term)"] + dateFilters
             if let range = query.range { authorArgs.append(range) } else if let ref = query.ref { authorArgs.append(ref) } else { authorArgs.append(contentsOf: ["--branches", "--remotes", "--tags"]) }
             if let path = query.path { authorArgs.append(contentsOf: ["--", path]) }
             if let authorResult = try? await GitRunner.run(authorArgs, in: url, check: false), authorResult.succeeded {

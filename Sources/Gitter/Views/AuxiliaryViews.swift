@@ -430,6 +430,27 @@ struct SubmodulesView: View {
     }
 }
 
+struct AddSubmoduleSheet: View {
+    let repo: Repository
+    @State private var url = ""
+    @State private var path = ""
+
+    var body: some View {
+        SheetForm(title: "Add Submodule", confirm: "Add", disabled: url.isEmpty || path.isEmpty) {
+            Task { await repo.addSubmodule(url: url, path: path) }
+        } content: {
+            TextField("Repository URL", text: $url, prompt: Text("git@github.com:user/library.git"))
+            TextField("Path", text: $path, prompt: Text("Vendor/library"))
+        }
+        .onChange(of: url) { _, new in
+            if path.isEmpty, var last = new.split(separator: "/").last.map(String.init) {
+                if last.hasSuffix(".git") { last = String(last.dropLast(4)) }
+                path = last
+            }
+        }
+    }
+}
+
 /// Generic sheet layout used by the small forms.
 struct SheetForm<Content: View>: View {
     let title: String

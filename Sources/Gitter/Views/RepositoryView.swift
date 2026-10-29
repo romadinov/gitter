@@ -54,6 +54,7 @@ struct RepositoryView: View {
         .sheet(isPresented: Bindable(model).showNewRemote) { NewRemoteSheet(repo: repo) }
         .sheet(isPresented: Bindable(model).showQuickActions) { QuickActionsView(repo: repo, model: model) }
         .sheet(isPresented: Bindable(model).showInteractiveRebase) { InteractiveRebaseSheet(repo: repo, base: model.interactiveRebaseBase) }
+        .sheet(isPresented: Bindable(model).showAddSubmodule) { AddSubmoduleSheet(repo: repo) }
         .fileImporter(isPresented: Bindable(model).showApplyPatch, allowedContentTypes: [.data, .plainText, UTType(filenameExtension: "patch") ?? .plainText, UTType(filenameExtension: "diff") ?? .plainText]) { result in
             if case .success(let url) = result {
                 let accessed = url.startAccessingSecurityScopedResource()
@@ -164,6 +165,23 @@ struct RepositoryToolbar: ToolbarContent {
             }
         }
         ToolbarItemGroup(placement: .primaryAction) {
+            Button { model.showQuickActions = true } label: {
+                Label("Quick Actions", systemImage: "wand.and.stars")
+            }
+            .help("Quick Actions (⌘K)")
+
+            Button { Task { await repo.undo() } } label: {
+                Label("Undo", systemImage: "arrow.uturn.backward")
+            }
+            .help(repo.undoStack.undoTitle.map { "Undo \($0) (⌘Z)" } ?? "Undo (⌘Z)")
+            .disabled(!repo.undoStack.canUndo)
+
+            Button { Task { await repo.redo() } } label: {
+                Label("Redo", systemImage: "arrow.uturn.forward")
+            }
+            .help(repo.undoStack.redoTitle.map { "Redo \($0) (⇧⌘Z)" } ?? "Redo (⇧⌘Z)")
+            .disabled(!repo.undoStack.canRedo)
+
             Button { Task { await repo.fetch() } } label: {
                 Label("Fetch", systemImage: "arrow.triangle.2.circlepath")
             }
@@ -217,11 +235,6 @@ struct RepositoryToolbar: ToolbarContent {
                 Label("Branch", systemImage: "arrow.triangle.branch")
             }
             .help("New branch (⌘B)")
-
-            Button { model.showQuickActions = true } label: {
-                Label("Quick Actions", systemImage: "command")
-            }
-            .help("Quick Actions (⌘K)")
 
             Menu {
                 Button("Reveal in Finder") { repo.revealInFinder(nil) }

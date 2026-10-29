@@ -122,6 +122,12 @@ struct HistoryView: View {
     @State private var compact = false
     @State private var showGraph = true
     @State private var resetTarget: Commit?
+    @State private var filterAfter: Date?
+    @State private var filterBefore: Date?
+    @State private var filterAuthor = ""
+    @State private var showFilters = false
+
+    private var hasDateFilter: Bool { filterAfter != nil || filterBefore != nil || !filterAuthor.isEmpty }
 
     private var isFileHistory: Bool { query.path != nil }
 
@@ -144,6 +150,14 @@ struct HistoryView: View {
                     TextField("Search message, author or hash", text: $search)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 260)
+                    Button { showFilters.toggle() } label: {
+                        Image(systemName: hasDateFilter ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Filter by author and date")
+                    .popover(isPresented: $showFilters, arrowEdge: .bottom) {
+                        HistoryFilterPopover(after: $filterAfter, before: $filterBefore, author: $filterAuthor)
+                    }
                 }
                 .controlSize(.small)
                 .padding(.horizontal, 12).padding(.vertical, 8)
@@ -204,7 +218,7 @@ struct HistoryView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task(id: TaskKey(query: query, revision: repo.revision, search: debouncedSearch, topo: topoOrder, firstParent: firstParent)) {
+        .task(id: TaskKey(query: query, revision: repo.revision, search: debouncedSearch, topo: topoOrder, firstParent: firstParent, after: filterAfter, before: filterBefore, author: filterAuthor)) {
             await load()
         }
         .task(id: search) {
@@ -218,7 +232,7 @@ struct HistoryView: View {
         } message: { commit in Text(commit.subject) }
     }
 
-    private struct TaskKey: Hashable { let query: GitQueries.LogQuery; let revision: Int; let search: String; let topo: Bool; let firstParent: Bool }
+    private struct TaskKey: Hashable { let query: GitQueries.LogQuery; let revision: Int; let search: String; let topo: Bool; let firstParent: Bool; let after: Date?; let before: Date?; let author: String }
 
     private var graphWidth: CGFloat {
         CGFloat(max(rows.map(\.laneCount).max() ?? 1, 1)) * GraphCell.laneWidth + 8
@@ -231,6 +245,9 @@ struct HistoryView: View {
         q.search = debouncedSearch
         q.firstParent = firstParent
         q.topoOrder = topoOrder
+        q.since = filterAfter
+        q.until = filterBefore
+        q.author = filterAuthor
         do {
             let result = try await GitQueries.log(q, in: repo.url)
             guard !Task.isCancelled else { return }
@@ -285,6 +302,33 @@ struct HistoryView: View {
             guard response == .OK, let url = panel.url else { return }
             Task { await repo.saveCommitPatch(commit.hash, to: url) }
         }
+    }
+}
+
+struct HistoryFilterPopover: View {
+    @Binding var after: Date?
+    @Binding var before: Date?
+    @Binding var author: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Filter Commits").font(.headline)
+            TextField("Author contains", text: $author).textFieldStyle(.roundedBorder)
+            Toggle("Date is after", isOn: Binding(get: { after != nil }, set: { after = $0 ? Calendar.current.date(byAdding: .month, value: -1, to: Date()) : nil }))
+            if let a = after {
+                DatePicker("", selection: Binding(get: { a }, set: { after = $0 }), displayedComponents: .date).labelsHidden()
+            }
+            Toggle("Date is before", isOn: Binding(get: { before != nil }, set: { before = $0 ? Date() : nil }))
+            if let b = before {
+                DatePicker("", selection: Binding(get: { b }, set: { before = $0 }), displayedComponents: .date).labelsHidden()
+            }
+            HStack {
+                Spacer()
+                Button("Clear") { after = nil; before = nil; author = "" }
+            }
+        }
+        .padding(16)
+        .frame(width: 260)
     }
 }
 

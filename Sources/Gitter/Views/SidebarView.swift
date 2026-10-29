@@ -65,12 +65,17 @@ struct SidebarView: View {
     @State private var renameTarget: Branch?
     @State private var renameText = ""
     @State private var filter = ""
+    @AppStorage("sidebarShowHashes") private var showHashes = false
+    @AppStorage("sidebarHideStale") private var hideStale = false
+    @AppStorage("sidebarHideMergedRemotes") private var hideMergedRemotes = false
 
     private var localTree: [BranchNode] { BranchNode.tree(from: filtered(repo.localBranches)) }
 
     private func filtered(_ branches: [Branch]) -> [Branch] {
-        guard !filter.isEmpty else { return branches }
-        return branches.filter { $0.name.localizedCaseInsensitiveContains(filter) }
+        var result = branches
+        if !filter.isEmpty { result = result.filter { $0.name.localizedCaseInsensitiveContains(filter) } }
+        if hideStale { result = result.filter { $0.isCurrent || Date().timeIntervalSince($0.date) <= 60 * 86_400 } }
+        return result
     }
 
     var body: some View {
@@ -107,13 +112,13 @@ struct SidebarView: View {
             Section {
                 OutlineGroup(localTree, children: \.children) { node in
                     if let branch = node.branch {
-                        BranchRow(branch: branch, repo: repo, model: model)
+                        BranchRow(branch: branch, repo: repo, model: model, showHash: showHashes)
                             .tag(SidebarItem.branch(branch.fullRef))
                             .draggable(DragPayload.branch(branch.name))
                             .dropDestination(for: String.self) { items, _ in handleBranchDrop(items, onto: branch) }
                             .contextMenu { branchMenu(branch) }
                     } else {
-                        Label(node.name, systemImage: "folder.fill").font(.system(size: 15))
+                        Label(node.name, systemImage: "folder.fill")
                     }
                 }
             } header: {
@@ -192,17 +197,25 @@ struct SidebarView: View {
         .safeAreaInset(edge: .bottom) {
             HStack(spacing: 10) {
                 Menu {
-                    Button("New Branch…") { model.newBranchStart = nil; model.showNewBranch = true }
-                    Button("New Tag…") { model.newTagRef = nil; model.showNewTag = true }
-                    Button("Add Remote…") { model.showNewRemote = true }
+                    Button("Create New Branch…") { model.newBranchStart = nil; model.showNewBranch = true }
+                    Button("Create New Tag…") { model.newTagRef = nil; model.showNewTag = true }
+                    Divider()
+                    Button("Add Remote Repository…") { model.showNewRemote = true }
+                    Button("Add Submodule…") { model.showAddSubmodule = true }
+                    Divider()
                     Button("Stash Changes…") { model.stashPaths = []; model.showStash = true }
                 } label: { Image(systemName: "plus") }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                 TextField("Filter", text: $filter)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
-                Button { model.showQuickActions = true } label: { Image(systemName: "slider.horizontal.3") }
-                    .buttonStyle(.borderless).help("Quick Actions (⌘K)")
+                Menu {
+                    Toggle("Show Commit Hashes", isOn: $showHashes)
+                    Toggle("Hide Stale Branches", isOn: $hideStale)
+                    Toggle("Hide Remote Branches Merged into HEAD", isOn: $hideMergedRemotes)
+                } label: { Image(systemName: "slider.horizontal.3") }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .help("View Settings")
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
             .background(.bar)
@@ -419,11 +432,11 @@ struct SidebarRow: View {
     var body: some View {
         Label {
             HStack {
-                Text(title).font(.system(size: 15))
-                Spacer()
+                Text(title).lineLimit(1).layoutPriority(1)
+                Spacer(minLength: 4)
                 if badge > 0 {
-                    Text("\(badge)")
-                        .font(.system(size: 12, weight: .semibold))
+                    Text(badge > 9_999 ? "9999+" : "\(badge)")
+                        .font(.caption.weight(.semibold))
                         .padding(.horizontal, 7).padding(.vertical, 2)
                         .background(.quaternary, in: Capsule())
                 }
@@ -438,6 +451,7 @@ struct BranchRow: View {
     let branch: Branch
     let repo: Repository
     let model: WindowModel
+    var showHash = false
 
     private var isStale: Bool { Date().timeIntervalSince(branch.date) > 60 * 86_400 }
 
@@ -445,7 +459,7 @@ struct BranchRow: View {
         Label {
             HStack(spacing: 6) {
                 Text(branch.name.split(separator: "/").last.map(String.init) ?? branch.name)
-                    .font(.system(size: 15, weight: branch.isCurrent ? .semibold : .regular))
+                    .fontWeight(branch.isCurrent ? .semibold : .regular)
                     .lineLimit(1)
                 Spacer(minLength: 4)
                 if branch.upstreamGone {
@@ -455,11 +469,14 @@ struct BranchRow: View {
                 }
                 if branch.ahead > 0 || branch.behind > 0 {
                     Text((branch.ahead > 0 ? "↑\(branch.ahead)" : "") + (branch.behind > 0 ? " ↓\(branch.behind)" : ""))
-                        .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                        .font(.caption2.weight(.medium)).foregroundStyle(.secondary)
+                }
+                if showHash {
+                    Text(branch.shortHash).font(.caption2.monospaced()).foregroundStyle(.tertiary)
                 }
                 if branch.isCurrent {
                     Text("HEAD")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.caption2.weight(.bold))
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(.quaternary, in: Capsule())
                 }
@@ -481,7 +498,7 @@ struct RemoteBranchRow: View {
                 Text(branch.shortHash).font(.caption.monospaced()).foregroundStyle(.tertiary)
             }
         } icon: { Image(systemName: "arrow.triangle.branch").foregroundStyle(.primary) }
-        .font(.system(size: 15))
+        
         .help("\(branch.name) · \(branch.subject)")
     }
 }

@@ -62,6 +62,7 @@ final class WindowModel {
     var showRepositoryList = false
     var showApplyPatch = false
     var showCompare = false
+    var showAddSubmodule = false
 
     func open(url: URL) async {
         guard let top = await GitQueries.topLevel(of: url) else {

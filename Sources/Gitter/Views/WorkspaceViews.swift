@@ -12,7 +12,7 @@ struct StashesView: View {
         HSplitView {
             VStack(spacing: 0) {
                 HStack {
-                    Text("Stashes").font(.system(size: 15, weight: .semibold))
+                    Text("Stashes").font(.headline)
                     Spacer()
                     Button { model.stashPaths = []; model.showStash = true } label: { Label("Stash Changes", systemImage: "plus") }
                         .disabled(repo.status.changeCount == 0)
@@ -23,8 +23,8 @@ struct StashesView: View {
                     HStack(spacing: 12) {
                         Image(systemName: "tray.full").foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(stash.message).font(.system(size: 15)).lineLimit(2)
-                            Text("\(stash.ref) · \(stash.date.gitRelativeDescription)").font(.system(size: 12)).foregroundStyle(.secondary)
+                            Text(stash.message).lineLimit(2)
+                            Text("\(stash.ref) · \(stash.date.gitRelativeDescription)").font(.caption).foregroundStyle(.secondary)
                         }
                     }
                     .padding(.vertical, 4)
@@ -91,9 +91,9 @@ struct BranchesReviewView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Text("Branches Review").font(.system(size: 15, weight: .semibold))
+                Text("Branches Review").font(.headline)
                 Spacer()
-                Text("Base branch").foregroundStyle(.secondary)
+                Text("Compare local branches to:").foregroundStyle(.secondary)
                 Picker("", selection: $base) { ForEach(baseOptions, id: \.self) { Text($0).tag($0) } }.labelsHidden().frame(maxWidth: 220)
                 Stepper("Stale after \(staleDays) days", value: $staleDays, in: 7...365, step: 7)
             }
@@ -229,7 +229,7 @@ struct RepositorySettingsView: View {
             }
             Section("Ignored Files (.gitignore)") {
                 TextEditor(text: $gitignore)
-                    .font(.system(size: 13, design: .monospaced))
+                    .font(.system(.callout, design: .monospaced))
                     .frame(height: 160)
                     .onChange(of: gitignore) { _, _ in gitignoreDirty = true }
                 HStack {

@@ -23,7 +23,7 @@ struct CommitDetailView: View {
                         HStack(spacing: 10) {
                             StatusBadge(kind: file.kind)
                             FileIcon(path: file.path)
-                            Text(file.originalPath.map { "\($0) → \(file.path)" } ?? file.path).font(.system(size: 14)).lineLimit(1).truncationMode(.middle)
+                            Text(file.originalPath.map { "\($0) → \(file.path)" } ?? file.path).lineLimit(1).truncationMode(.middle)
                         }
                         .padding(.vertical, 2)
                         .tag(file.path)

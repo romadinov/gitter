@@ -94,7 +94,7 @@ struct HunkHeaderView: View {
     var body: some View {
         HStack(spacing: 8) {
             Text(hunk.header)
-                .font(.system(size: 13, design: .monospaced))
+                .font(.system(.callout, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Spacer()

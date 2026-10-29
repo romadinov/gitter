@@ -36,6 +36,7 @@ struct WorkingCopyView: View {
     @State private var viewMode: ViewMode = .changed
     @State private var renameFile: FileChange?
     @State private var renameText = ""
+    @State private var showCompleteFile = false
     @State private var settings = AppSettings.shared
 
     enum ViewMode: String, CaseIterable { case changed = "Changed Files", all = "All Files" }
@@ -96,7 +97,7 @@ struct WorkingCopyView: View {
                     DiffHeader(row: row, showStaged: $showStagedDiff, repo: repo, model: model)
                     Divider()
                     HStack {
-                        Text(DiffSummary.text(for: diffs)).font(.system(size: 13, design: .monospaced)).foregroundStyle(.secondary)
+                        Text(DiffSummary.text(for: diffs)).font(.system(.callout, design: .monospaced)).foregroundStyle(.secondary)
                         Spacer()
                     }
                     .padding(.horizontal, 16).padding(.vertical, 10)
@@ -119,7 +120,7 @@ struct WorkingCopyView: View {
                 }
                 if selectedRow != nil {
                     Divider()
-                    DiffFooter(diffs: diffs, change: displayedChange, repo: repo)
+                    DiffFooter(diffs: diffs, change: displayedChange, repo: repo, showCompleteFile: $showCompleteFile)
                 }
             }
             .frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
@@ -132,11 +133,11 @@ struct WorkingCopyView: View {
         .onChange(of: selectedRow?.path) { _, _ in
             if let row = selectedRow { showStagedDiff = row.staged != nil }
         }
-        .task(id: DiffTaskKey(changeID: displayedChange?.id, revision: repo.revision, whitespace: settings.showWhitespaceChanges, context: settings.contextLines)) {
+        .task(id: DiffTaskKey(changeID: displayedChange?.id, revision: repo.revision, whitespace: settings.showWhitespaceChanges, context: showCompleteFile ? 1_000_000 : settings.contextLines)) {
             guard let change = displayedChange else { diffs = []; return }
             loadingDiff = true
             defer { loadingDiff = false }
-            let result = (try? await GitQueries.workingDiff(for: change, ignoreWhitespace: !settings.showWhitespaceChanges, context: settings.contextLines, in: repo.url)) ?? []
+            let result = (try? await GitQueries.workingDiff(for: change, ignoreWhitespace: !settings.showWhitespaceChanges, context: showCompleteFile ? 1_000_000 : settings.contextLines, in: repo.url)) ?? []
             if !Task.isCancelled { diffs = result }
         }
         .confirmationDialog("Discard changes in \(filesToDiscard.count) file(s)?", isPresented: $showDiscardConfirm) {
@@ -239,7 +240,7 @@ struct WorkingCopyHeader: View {
             .menuStyle(.borderlessButton).fixedSize()
             .help("View options")
         }
-        .font(.system(size: 15))
+        
         .padding(.horizontal, 16).padding(.vertical, 12)
     }
 }
@@ -260,7 +261,7 @@ struct StatusBadge: View {
 
     var body: some View {
         Text(kind == .untracked ? "?" : kind.rawValue)
-            .font(.system(size: 12, weight: .bold, design: .monospaced))
+            .font(.system(size: 11, weight: .bold, design: .monospaced))
             .foregroundStyle(.white)
             .frame(width: 22, height: 22)
             .background(color, in: RoundedRectangle(cornerRadius: 5))
@@ -337,7 +338,7 @@ struct WorkingFileRow: View {
                 }
             } label: {
                 Image(systemName: checkIcon)
-                    .font(.system(size: 18))
+                    .font(.system(size: 16))
                     .foregroundStyle(isSelected ? Color.white : (row.staged != nil ? Color.accentColor : Color.secondary.opacity(0.6)))
             }
             .buttonStyle(.plain)
@@ -345,13 +346,13 @@ struct WorkingFileRow: View {
             StatusBadge(kind: row.kind)
             FileIcon(path: row.path).padding(.leading, 12)
             Text(row.staged?.originalPath.map { "\($0) → \(row.path)" } ?? row.path)
-                .font(.system(size: 15))
+                
                 .foregroundStyle(isSelected ? .white : .primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer()
         }
-        .padding(.vertical, 7)
+        .padding(.vertical, 5)
         .padding(.leading, 4)
     }
 }
@@ -365,7 +366,7 @@ struct DiffHeader: View {
     var body: some View {
         HStack(spacing: 10) {
             FileIcon(path: row.path)
-            Text(row.fileName).font(.system(size: 17, weight: .semibold))
+            Text(row.fileName).font(.headline)
             if !row.directory.isEmpty {
                 Text(row.directory).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
             }
@@ -396,6 +397,7 @@ struct DiffFooter: View {
     let diffs: [FileDiff]
     let change: FileChange?
     let repo: Repository
+    @Binding var showCompleteFile: Bool
     @State private var settings = AppSettings.shared
 
     var body: some View {
@@ -404,7 +406,10 @@ struct DiffFooter: View {
                 Image(systemName: "textformat.abc.dottedunderline")
             }
             .toggleStyle(.button).buttonStyle(.borderless)
-            .help("Ignore whitespace changes")
+            .help("Show / Hide Whitespace Changes")
+            Toggle(isOn: $showCompleteFile) { Image(systemName: "doc.plaintext") }
+                .toggleStyle(.button).buttonStyle(.borderless)
+                .help("Display the Complete File")
             Toggle(isOn: $settings.syntaxHighlighting) { Image(systemName: "paintpalette") }
                 .toggleStyle(.button).buttonStyle(.borderless)
                 .help("Syntax coloring")
@@ -419,6 +424,7 @@ struct DiffFooter: View {
                 Text("Context: \(settings.contextLines) line\(settings.contextLines == 1 ? "" : "s")").font(.callout)
             }
             .fixedSize()
+            .disabled(showCompleteFile)
         }
         .padding(.horizontal, 14).padding(.vertical, 8)
         .background(.bar)
@@ -450,11 +456,11 @@ struct AllFilesTree: View {
                         Image(systemName: "square").font(.system(size: 18)).foregroundStyle(.clear)
                         Color.clear.frame(width: 22, height: 22)
                         FileIcon(path: node.id).padding(.leading, 12)
-                        Text(node.name).font(.system(size: 15)).foregroundStyle(.secondary)
+                        Text(node.name).foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 4).padding(.leading, 4)
                 } else {
-                    Label(node.name, systemImage: "folder.fill").font(.system(size: 15)).foregroundStyle(.secondary)
+                    Label(node.name, systemImage: "folder.fill").foregroundStyle(.secondary)
                 }
             }
         }
@@ -577,6 +583,7 @@ struct CommitBox: View {
     @State private var body_ = ""
     @State private var amend = false
     @State private var signOff = false
+    @State private var skipHooks = false
     @State private var settings = AppSettings.shared
     @FocusState private var summaryFocused: Bool
 
@@ -589,7 +596,7 @@ struct CommitBox: View {
             ZStack(alignment: .trailing) {
                 TextField("Commit subject", text: $summary)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 15))
+                    
                     .padding(.horizontal, 12).padding(.vertical, 9)
                     .padding(.trailing, 30)
                     .focused($summaryFocused)
@@ -604,11 +611,11 @@ struct CommitBox: View {
             VStack(spacing: 0) {
                 ZStack(alignment: .topLeading) {
                     TextEditor(text: $body_)
-                        .font(.system(size: 15))
+                        
                         .scrollContentBackground(.hidden)
                         .padding(.horizontal, 8).padding(.vertical, 6)
                     if body_.isEmpty {
-                        Text("Description").foregroundStyle(.tertiary).font(.system(size: 15)).padding(.horizontal, 13).padding(.vertical, 9).allowsHitTesting(false)
+                        Text("Description").foregroundStyle(.tertiary).padding(.horizontal, 13).padding(.vertical, 9).allowsHitTesting(false)
                     }
                 }
                 .frame(height: 96)
@@ -646,8 +653,9 @@ struct CommitBox: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Amend", isOn: $amend).toggleStyle(.checkbox).disabled(!repo.status.hasHEAD)
                     Toggle("Sign Off", isOn: $signOff).toggleStyle(.checkbox).help("Add a Signed-off-by trailer")
+                    Toggle("Skip Hooks", isOn: $skipHooks).toggleStyle(.checkbox).help("Bypass pre-commit and commit-msg hooks (--no-verify)")
                 }
-                .font(.system(size: 15))
+                
                 Spacer()
                 Menu {
                     ForEach(settings.profiles) { profile in
@@ -658,12 +666,12 @@ struct CommitBox: View {
                     Button("Manage Profiles…") { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) }
                 } label: {
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text(repo.userName.isEmpty ? "No committer identity" : repo.userName).font(.system(size: 15))
-                        Text(repo.userEmail).font(.system(size: 13)).foregroundStyle(.secondary)
+                        Text(repo.userName.isEmpty ? "No committer identity" : repo.userName)
+                        Text(repo.userEmail).font(.callout).foregroundStyle(.secondary)
                     }
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                AvatarView(name: repo.userName, email: repo.userEmail, size: 44)
+                AvatarView(name: repo.userName, email: repo.userEmail, size: 36)
             }
             .padding(.top, 4)
 
@@ -703,7 +711,7 @@ struct CommitBox: View {
         }
         let isAmend = amend
         Task {
-            await repo.commit(message: message, amend: isAmend, sign: settings.signCommits)
+            await repo.commit(message: message, amend: isAmend, sign: settings.signCommits, skipHooks: skipHooks)
             if repo.errorMessage == nil {
                 summary = ""
                 body_ = ""

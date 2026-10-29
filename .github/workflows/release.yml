@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app || sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+      - name: Test
+        run: swift test
+      - name: Build app bundle
+        run: Scripts/build-app.sh release
+      - name: Zip
+        run: ditto -c -k --keepParent build/Gitter.app "build/Gitter-${GITHUB_REF_NAME#v}.zip"
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/Gitter-*.zip
+          generate_release_notes: true
