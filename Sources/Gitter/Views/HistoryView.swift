@@ -7,6 +7,8 @@ struct GraphRow: Hashable {
     let color: Int
     let lines: [Line]
     let laneCount: Int
+    /// True when this commit's lane was already open above it (a child drew a line down to it).
+    let hasIncoming: Bool
 }
 
 enum CommitGraph {
@@ -18,6 +20,7 @@ enum CommitGraph {
         rows.reserveCapacity(commits.count)
         for commit in commits {
             var lane = active.firstIndex(of: commit.hash)
+            let hasIncoming = lane != nil
             if lane == nil {
                 active.append(commit.hash)
                 colors.append(nextColor); nextColor += 1
@@ -54,7 +57,7 @@ enum CommitGraph {
                     lines.append(GraphRow.Line(fromLane: i, toLane: target, color: parent == commit.parents.first ? beforeColors[i] : afterColors[target]))
                 }
             }
-            rows.append(GraphRow(lane: i, color: beforeColors[i], lines: lines, laneCount: max(before.count, after.count)))
+            rows.append(GraphRow(lane: i, color: beforeColors[i], lines: lines, laneCount: max(before.count, after.count), hasIncoming: hasIncoming))
             active = after
             colors = afterColors
         }
@@ -75,6 +78,12 @@ struct GraphCell: View {
             let h = size.height
             let mid = h / 2
             func x(_ lane: Int) -> CGFloat { CGFloat(lane) * Self.laneWidth + Self.laneWidth / 2 }
+            if row.hasIncoming {
+                var incoming = Path()
+                incoming.move(to: CGPoint(x: x(row.lane), y: 0))
+                incoming.addLine(to: CGPoint(x: x(row.lane), y: mid))
+                context.stroke(incoming, with: .color(CommitGraph.color(row.color)), lineWidth: 2)
+            }
             for line in row.lines {
                 var path = Path()
                 if line.fromLane == row.lane {
@@ -101,8 +110,14 @@ struct GraphCell: View {
                 context.stroke(dot, with: .color(.white), lineWidth: 1.5)
             }
         }
-        .frame(width: CGFloat(max(row.laneCount, 1)) * Self.laneWidth, height: 24)
+        // Draw taller than the cell and pull the layout back in with negative padding so
+        // consecutive rows' lane segments overlap across the table's row spacing.
+        .frame(width: CGFloat(max(row.laneCount, 1)) * Self.laneWidth, height: Self.cellHeight + 2 * Self.overflow)
+        .padding(.vertical, -Self.overflow)
     }
+
+    static let cellHeight: CGFloat = 24
+    static let overflow: CGFloat = 12
 }
 
 struct HistoryView: View {
