@@ -28,6 +28,10 @@ final class Repository {
 
     /// Increments after each successful refresh so dependent views can reload.
     var revision = 0
+    /// Bumped only when branches, tags, stashes or HEAD change, so history views can skip
+    /// reloading on plain working-copy edits.
+    var refsRevision = 0
+    private var refsSignature = 0
     var isBusy = false
     var busyMessage: String?
     var errorMessage: String?
@@ -93,6 +97,8 @@ final class Repository {
     }
 
     private func loadState() async {
+        Perf.log("repository refresh start")
+        defer { Perf.log("repository refresh done (revision \(revision))") }
         let url = self.url
         do {
             async let statusTask = GitQueries.status(in: url)
@@ -128,6 +134,11 @@ final class Repository {
             signingKey = identity.signingKey
             operationState = GitQueries.operationState(in: url)
             revision += 1
+            var hasher = Hasher()
+            hasher.combine(refs.branches); hasher.combine(refs.tags); hasher.combine(newStashes)
+            hasher.combine(newStatus.branch); hasher.combine(newUnpushed); hasher.combine(newUnpulled)
+            let signature = hasher.finalize()
+            if signature != refsSignature { refsSignature = signature; refsRevision += 1 }
         } catch {
             errorMessage = error.localizedDescription
         }

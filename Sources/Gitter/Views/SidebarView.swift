@@ -80,8 +80,7 @@ struct SidebarView: View {
 
     var body: some View {
         List(selection: Binding(get: { model.selection }, set: { newValue in
-            if newValue != nil, newValue != model.selection { model.routes = [] }
-            if newValue != nil { model.selection = newValue }
+            if let newValue { select(newValue) }
         })) {
             Section("Workspace") {
                 SidebarRow(title: "Working Copy", systemImage: "folder.fill", color: .blue, badge: repo.status.changeCount)
@@ -114,6 +113,7 @@ struct SidebarView: View {
                     if let branch = node.branch {
                         BranchRow(branch: branch, repo: repo, model: model, showHash: showHashes)
                             .tag(SidebarItem.branch(branch.fullRef))
+                            .onTapGesture { select(.branch(branch.fullRef)) }
                             .draggable(DragPayload.branch(branch.name))
                             .dropDestination(for: String.self) { items, _ in handleBranchDrop(items, onto: branch) }
                             .contextMenu { branchMenu(branch) }
@@ -143,6 +143,7 @@ struct SidebarView: View {
                             if let branch = node.branch {
                                 RemoteBranchRow(branch: branch)
                                     .tag(SidebarItem.remoteBranch(branch.fullRef))
+                                    .onTapGesture { select(.remoteBranch(branch.fullRef)) }
                                     .draggable(DragPayload.branch(branch.name))
                                     .dropDestination(for: String.self) { items, _ in handleRemoteBranchDrop(items, onto: branch, remote: remote) }
                                     .contextMenu { remoteBranchMenu(branch, remote: remote) }
@@ -180,6 +181,7 @@ struct SidebarView: View {
                         }
                     } icon: { Image(systemName: "tag") }
                     .tag(SidebarItem.tag(tag.name))
+                    .onTapGesture { select(.tag(tag.name)) }
                     .draggable(DragPayload.branch(tag.name))
                     .contextMenu { tagMenu(tag) }
                 }
@@ -277,6 +279,13 @@ struct SidebarView: View {
             return true
         default: return false
         }
+    }
+
+    /// Single-click selection. Rows that are also `.draggable` need an explicit tap handler on
+    /// macOS because the drag gesture otherwise swallows the mouse-down that would select them.
+    private func select(_ item: SidebarItem) {
+        if item != model.selection { model.routes = [] }
+        model.selection = item
     }
 
     private func handleBranchDrop(_ items: [String], onto target: Branch) -> Bool {

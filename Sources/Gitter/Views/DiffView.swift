@@ -18,6 +18,7 @@ struct DiffView: View {
     @State private var settings = AppSettings.shared
 
     var body: some View {
+        let _ = Perf.log("DiffView body files=\(files.count)")
         ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
                 ForEach(files) { file in
@@ -270,6 +271,28 @@ enum SyntaxHighlighter {
     static let comment = Color(red: 0.42, green: 0.47, blue: 0.53)
     static let symbol = Color(red: 0.16, green: 0.55, blue: 0.75)
 
+    nonisolated(unsafe) private static var regexCache: [String: NSRegularExpression] = [:]
+    nonisolated(unsafe) private static var keywordPatterns: [Language: String] = [:]
+    private static let cacheLock = NSLock()
+
+    private static func regex(_ pattern: String, options: NSRegularExpression.Options) -> NSRegularExpression? {
+        let key = "\(options.rawValue):\(pattern)"
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        if let cached = regexCache[key] { return cached }
+        let compiled = try? NSRegularExpression(pattern: pattern, options: options)
+        if let compiled { regexCache[key] = compiled }
+        return compiled
+    }
+
+    private static func keywordPattern(for language: Language) -> String? {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        if let cached = keywordPatterns[language] { return cached }
+        guard let keywords = keywordSets[language] else { return nil }
+        let pattern = "\\b(" + keywords.sorted { $0.count > $1.count }.map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|") + ")\\b"
+        keywordPatterns[language] = pattern
+        return pattern
+    }
+
     static func highlight(_ text: String, language: Language?) -> AttributedString {
         var result = AttributedString(text)
         guard let language, !text.isEmpty else { return result }
@@ -279,7 +302,7 @@ enum SyntaxHighlighter {
             result[ar].foregroundColor = c
         }
         func apply(_ pattern: String, _ c: Color, options: NSRegularExpression.Options = []) {
-            guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else { return }
+            guard let regex = regex(pattern, options: options) else { return }
             for m in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) { color(m.range, c) }
         }
 
@@ -318,8 +341,7 @@ enum SyntaxHighlighter {
             break
         }
 
-        if let keywords = keywordSets[language] {
-            let pattern = "\\b(" + keywords.sorted { $0.count > $1.count }.map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|") + ")\\b"
+        if let pattern = keywordPattern(for: language) {
             apply(pattern, keyword)
         }
         apply(#"\b[A-Z][A-Za-z0-9_]*\b"#, typeName)

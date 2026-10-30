@@ -14,6 +14,7 @@ struct CommitDetailView: View {
     @State private var settings = AppSettings.shared
 
     var body: some View {
+        let _ = Perf.log("CommitDetailView body \(hash.prefix(7)) detail=\(detail != nil) diffs=\(diffs.count)")
         HSplitView {
             VStack(alignment: .leading, spacing: 0) {
                 if let detail {
@@ -27,6 +28,7 @@ struct CommitDetailView: View {
                         }
                         .padding(.vertical, 2)
                         .tag(file.path)
+                        .onTapGesture { selectedFile = file.path }
                         .draggable(DragPayload.commitFile(hash, file.path))
                         .contextMenu {
                             Button("File History") { model.routes.append(.fileHistory(path: file.path)) }
@@ -70,14 +72,15 @@ struct CommitDetailView: View {
             loadError = nil
             selectedFile = filePath
             do {
-                detail = try await GitQueries.commitDetail(hash, in: repo.url)
+                detail = try await Perf.measure("commitDetail \(hash.prefix(7))") { try await GitQueries.commitDetail(hash, in: repo.url) }
             } catch {
                 loadError = error.localizedDescription
             }
         }
         .task(id: DiffKey(hash: hash, file: selectedFile, parents: detail?.commit.parents ?? [], whitespace: settings.showWhitespaceChanges, context: settings.contextLines)) {
             guard let detail else { return }
-            diffs = (try? await GitQueries.commitDiff(hash, parents: detail.commit.parents, path: selectedFile, ignoreWhitespace: !settings.showWhitespaceChanges, context: settings.contextLines, in: repo.url)) ?? []
+            diffs = await Perf.measure("commitDiff \(hash.prefix(7))") { (try? await GitQueries.commitDiff(hash, parents: detail.commit.parents, path: selectedFile, ignoreWhitespace: !settings.showWhitespaceChanges, context: settings.contextLines, in: repo.url)) ?? [] }
+            Perf.log("diff has \(diffs.count) files, \(diffs.reduce(0) { $0 + $1.hunks.reduce(0) { $0 + $1.lines.count } }) lines")
         }
     }
 

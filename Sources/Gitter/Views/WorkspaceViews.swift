@@ -29,6 +29,7 @@ struct StashesView: View {
                     }
                     .padding(.vertical, 4)
                     .tag(stash.hash)
+                    .onTapGesture { selected = stash.hash }
                     .draggable(DragPayload.stash(stash.hash))
                     .contextMenu {
                         Button("Apply") { Task { await repo.applyStash(stash, pop: false) } }

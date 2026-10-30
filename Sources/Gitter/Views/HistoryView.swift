@@ -128,6 +128,7 @@ struct HistoryView: View {
 
     @State private var commits: [Commit] = []
     @State private var rows: [GraphRow] = []
+    @State private var rowIndex: [Commit.ID: Int] = [:]
     @State private var selected: Commit.ID?
     @State private var search = ""
     @State private var debouncedSearch = ""
@@ -147,6 +148,7 @@ struct HistoryView: View {
     private var isFileHistory: Bool { query.path != nil }
 
     var body: some View {
+        let _ = Perf.log("HistoryView body (selected: \(selected?.prefix(7) ?? "none"))")
         VSplitView {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
@@ -179,9 +181,9 @@ struct HistoryView: View {
                 .background(.bar)
                 Divider()
 
-                Table(commits, selection: $selected) {
+                Table(of: Commit.self, selection: $selected) {
                     TableColumn("") { commit in
-                        if showGraph && !isFileHistory, let index = commits.firstIndex(where: { $0.id == commit.id }), index < rows.count {
+                        if showGraph && !isFileHistory, let index = rowIndex[commit.id], index < rows.count {
                             GraphCell(row: rows[index], isMerge: commit.isMerge)
                         }
                     }
@@ -189,7 +191,6 @@ struct HistoryView: View {
 
                     TableColumn("Summary") { commit in
                         CommitSummaryCell(commit: commit, isUnpushed: repo.unpushed.contains(commit.hash), isUnpulled: repo.unpulled.contains(commit.hash), compact: compact)
-                            .draggable(DragPayload.commit(commit.hash))
                     }
                     .width(min: 200, ideal: 520)
 
@@ -207,6 +208,13 @@ struct HistoryView: View {
                         Text(commit.shortHash).font(.body.monospaced()).foregroundStyle(.secondary)
                     }
                     .width(70)
+                } rows: {
+                    // Row-level dragging keeps single-click selection intact; a cell-level
+                    // `.draggable` competes with the table's selection gesture on macOS.
+                    ForEach(commits) { commit in
+                        TableRow(commit)
+                            .draggable(DragPayload.commit(commit.hash))
+                    }
                 }
                 .tableStyle(.inset(alternatesRowBackgrounds: true))
                 .contextMenu(forSelectionType: Commit.ID.self) { ids in
@@ -233,7 +241,7 @@ struct HistoryView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task(id: TaskKey(query: query, revision: repo.revision, search: debouncedSearch, topo: topoOrder, firstParent: firstParent, after: filterAfter, before: filterBefore, author: filterAuthor)) {
+        .task(id: TaskKey(query: query, revision: repo.refsRevision, search: debouncedSearch, topo: topoOrder, firstParent: firstParent, after: filterAfter, before: filterBefore, author: filterAuthor)) {
             await load()
         }
         .task(id: search) {
@@ -264,11 +272,17 @@ struct HistoryView: View {
         q.until = filterBefore
         q.author = filterAuthor
         do {
-            let result = try await GitQueries.log(q, in: repo.url)
+            let result = try await Perf.measure("history log (revision \(repo.revision))") { try await GitQueries.log(q, in: repo.url) }
             guard !Task.isCancelled else { return }
             commits = result
             rows = (showGraph && !isFileHistory) ? CommitGraph.layout(result) : []
+            rowIndex = Dictionary(uniqueKeysWithValues: result.enumerated().map { ($0.element.id, $0.offset) })
+            Perf.log("history loaded \(result.count) commits")
             if let selected, !result.contains(where: { $0.id == selected }) { self.selected = nil }
+            if selected == nil, let wanted = ProcessInfo.processInfo.environment["GITTER_DEBUG_SELECT_COMMIT"],
+               let match = result.first(where: { $0.hash.hasPrefix(wanted) }) {
+                selected = match.id
+            }
         } catch {
             repo.errorMessage = error.localizedDescription
         }
