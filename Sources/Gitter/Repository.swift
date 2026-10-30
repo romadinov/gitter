@@ -39,8 +39,7 @@ final class Repository {
 
     private var watcher: FileWatcher?
     private var pendingRefresh: Task<Void, Never>?
-    private var refreshing = false
-    private var refreshQueued = false
+    private var refreshTask: Task<Void, Never>?
     private var autoFetchTask: Task<Void, Never>?
 
     init(url: URL) {
@@ -76,13 +75,24 @@ final class Repository {
         }
     }
 
+    /// Reloads all repository state. If a refresh is already running (e.g. triggered by the
+    /// file watcher), waits for it and then reloads again so callers never observe state
+    /// captured before their own git operation finished.
     func refresh() async {
-        if refreshing { refreshQueued = true; return }
-        refreshing = true
-        defer {
-            refreshing = false
-            if refreshQueued { refreshQueued = false; scheduleRefresh(delay: .milliseconds(100)) }
+        if let inFlight = refreshTask {
+            await inFlight.value
+            if let newer = refreshTask, newer != inFlight {
+                await newer.value
+                return
+            }
         }
+        let task = Task<Void, Never> { @MainActor [weak self] in await self?.loadState() }
+        refreshTask = task
+        await task.value
+        if refreshTask == task { refreshTask = nil }
+    }
+
+    private func loadState() async {
         let url = self.url
         do {
             async let statusTask = GitQueries.status(in: url)
