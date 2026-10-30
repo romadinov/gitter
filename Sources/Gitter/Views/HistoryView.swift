@@ -149,7 +149,7 @@ struct HistoryView: View {
 
     var body: some View {
         let _ = Perf.log("HistoryView body (selected: \(selected?.prefix(7) ?? "none"))")
-        VSplitView {
+        VerticalSplit(storageKey: "history.splitFraction", defaultFraction: 0.5, minTop: 160, minBottom: 200) {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     Image(systemName: isFileHistory ? "doc.text.magnifyingglass" : "clock")
@@ -230,14 +230,15 @@ struct HistoryView: View {
                     }
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 160, maxHeight: .infinity)
-
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } bottom: {
+            // The detail/diff pane gets half the window by default, like Tower; the divider position is remembered.
             if let selected {
                 CommitDetailView(repo: repo, model: model, hash: selected, stash: nil, filePath: query.path)
-                    .frame(maxWidth: .infinity, minHeight: 160, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ContentUnavailableView("Select a Commit", systemImage: "square.and.pencil", description: Text("Commit details and changed files appear here."))
-                    .frame(maxWidth: .infinity, minHeight: 160, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
